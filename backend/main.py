@@ -1,4 +1,7 @@
-# branch testing
+#---------------DESCRIPTION🛠️-----------------------------
+# Nothing to see here yet.
+# Go to backend/newsapitest.py to test the News API functionality 📰
+# Go to backend/aibot.py to test the AI News Chatbot 🤖
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
