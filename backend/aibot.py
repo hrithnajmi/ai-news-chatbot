@@ -50,7 +50,7 @@ def get_top_news(location):
 
     top_headlines = news_client.get_top_headlines(
         country=location,       # Must be 2-letter code, e.g., 'us', 'my'
-        page_size=3,            # Get top 3 news articles
+        # page_size=3,            # Get top 3 news articles
     )
 
     articles = top_headlines.get("articles", [])
@@ -78,7 +78,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "get_top_news",
-            "description": "Get the top news headlines based on location provided",
+            "description": "Get the top 3 news headlines based on location provided",
             "parameters": {
                 "type": "object",
                 "properties": {
