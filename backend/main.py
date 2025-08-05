@@ -11,6 +11,8 @@ import os
 import json
 from openai import AzureOpenAI
 from newsapi import NewsApiClient
+import requests
+from bs4 import BeautifulSoup
 
 # Load environment variables
 load_dotenv()
@@ -266,34 +268,95 @@ async def chat_endpoint(request: ChatRequest):
 
 @app.post("/api/summarize")
 async def summarize_article(request: SummaryRequest):
-    """Generate AI summary for a specific article"""
+    """Generate AI summary for a specific article using full content"""
     try:
         article = request.article
+        
+        # Try to fetch full article content
+        full_content = fetch_article_content(article.get('url'))
+        
+        # Prepare content for summarization
+        if full_content and len(full_content) > 200:
+            content_to_summarize = f"Title: {article.get('title')}\n\nFull Article Content: {full_content}"
+            system_message = "You are an AI that provides comprehensive summaries of news articles. You have access to the full article content. Provide a detailed summary with key points, implications, and important details."
+        else:
+            # Fallback to title + description if scraping fails
+            content_to_summarize = f"Title: {article.get('title')}\nDescription: {article.get('description')}"
+            system_message = "You are an AI that provides summaries based on article titles and descriptions. Provide an informative summary with analysis and context."
         
         messages = [
             {
                 "role": "system",
-                "content": "You are an AI that provides concise, informative summaries of news articles. Focus on key points, implications, and important details. Keep summaries clear and engaging."
+                "content": system_message
             },
             {
                 "role": "user",
-                "content": f"Please provide a comprehensive summary of this article:\n\nTitle: {article.get('title')}\nDescription: {article.get('description')}\n\nProvide a detailed summary with key points and implications:"
+                "content": f"Please provide a comprehensive summary of this article:\n\n{content_to_summarize}"
             }
         ]
 
         response = openai_client.chat.completions.create(
             model=env_base_model,
             messages=messages,
-            max_tokens=300,  # Limit summary length
+            max_tokens=400,  # Increased for more detailed summaries
         )
 
         return {
-            "summary": response.choices[0].message.content
+            "summary": response.choices[0].message.content,
+            "used_full_content": bool(full_content and len(full_content) > 200)
         }
-
     except Exception as e:
-        print(f"Summary error: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating summary: {str(e)}")
+        print(f"Summarization error: {e}")
+        return {"summary": "Error generating summary"}
+
+def fetch_article_content(url):
+    """Fetch full article content from URL using web scraping"""
+    try:
+        # Set headers to mimic a real browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # Try different selectors for article content
+        content_selectors = [
+            'article',
+            '[class*="article-content"]',
+            '[class*="post-content"]',
+            '[class*="entry-content"]',
+            '[class*="content-body"]',
+            'main p',
+            '.content p'
+        ]
+        
+        content = ""
+        for selector in content_selectors:
+            elements = soup.select(selector)
+            if elements:
+                for element in elements:
+                    content += element.get_text() + " "
+                break
+        
+        # Fallback: get all paragraphs
+        if not content.strip():
+            paragraphs = soup.find_all('p')
+            content = ' '.join([p.get_text() for p in paragraphs])
+        
+        # Clean and limit content
+        content = ' '.join(content.split())  # Remove extra whitespace
+        return content[:3000] if content else None  # Limit to 3000 chars
+        
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
+        return None
 
 # Keep your existing endpoints
 @app.get("/api/news")
